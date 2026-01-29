@@ -113,10 +113,9 @@ class InfiniteSampler(torch.utils.data.Sampler):
         assert num_replicas > 0
         assert 0 <= rank < num_replicas
         assert 0 <= window_size <= 1
-        super().__init__(dataset)
+        super().__init__()
         self.dataset = dataset
-        self.rank = rank
-        self.num_replicas = num_replicas
+        self.rank, self.num_replicas = dist_info()
         self.shuffle = shuffle
         self.seed = seed
         self.window_size = window_size
@@ -139,6 +138,11 @@ class InfiniteSampler(torch.utils.data.Sampler):
                 j = (i - rnd.randint(window)) % order.size
                 order[i], order[j] = order[j], order[i]
             idx += 1
+
+def dist_info():
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank(), torch.distributed.get_world_size()
+    return 0, 1
 
 #----------------------------------------------------------------------------
 # Utilities for operating with torch.nn.Module parameters and buffers.

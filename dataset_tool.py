@@ -384,7 +384,6 @@ def main(
 
     if dest == '':
         raise click.ClickException('--dest output filename or directory must not be an empty string')
-
     num_files, input_iter = open_dataset(source, max_images=max_images)
     archive_root_dir, save_bytes, close_dest = open_dest(dest)
 

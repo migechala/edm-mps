@@ -32,12 +32,12 @@ def edm_sampler(
     sigma_max = min(sigma_max, net.sigma_max)
 
     # Time step discretization.
-    step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
+    step_indices = torch.arange(num_steps, dtype=torch.float32, device=latents.device)
     t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
     t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
 
     # Main sampling loop.
-    x_next = latents.to(torch.float64) * t_steps[0]
+    x_next = latents.to(torch.float32) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
         x_cur = x_next
 
@@ -47,13 +47,13 @@ def edm_sampler(
         x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * S_noise * randn_like(x_cur)
 
         # Euler step.
-        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
+        denoised = net(x_hat, t_hat, class_labels).to(torch.float32)
         d_cur = (x_hat - denoised) / t_hat
         x_next = x_hat + (t_next - t_hat) * d_cur
 
         # Apply 2nd order correction.
         if i < num_steps - 1:
-            denoised = net(x_next, t_next, class_labels).to(torch.float64)
+            denoised = net(x_next, t_next, class_labels).to(torch.float32)
             d_prime = (x_next - denoised) / t_next
             x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
 
@@ -100,7 +100,7 @@ def ablation_sampler(
     vp_beta_min = np.log(sigma_max ** 2 + 1) - 0.5 * vp_beta_d
 
     # Define time steps in terms of noise level.
-    step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
+    step_indices = torch.arange(num_steps, dtype=torch.float32, device=latents.device)
     if discretization == 'vp':
         orig_t_steps = 1 + step_indices / (num_steps - 1) * (epsilon_s - 1)
         sigma_steps = vp_sigma(vp_beta_d, vp_beta_min)(orig_t_steps)
@@ -108,7 +108,7 @@ def ablation_sampler(
         orig_t_steps = (sigma_max ** 2) * ((sigma_min ** 2 / sigma_max ** 2) ** (step_indices / (num_steps - 1)))
         sigma_steps = ve_sigma(orig_t_steps)
     elif discretization == 'iddpm':
-        u = torch.zeros(M + 1, dtype=torch.float64, device=latents.device)
+        u = torch.zeros(M + 1, dtype=torch.float32, device=latents.device)
         alpha_bar = lambda j: (0.5 * np.pi * j / M / (C_2 + 1)).sin() ** 2
         for j in torch.arange(M, 0, -1, device=latents.device): # M, ..., 1
             u[j - 1] = ((u[j] ** 2 + 1) / (alpha_bar(j - 1) / alpha_bar(j)).clip(min=C_1) - 1).sqrt()
@@ -148,7 +148,7 @@ def ablation_sampler(
 
     # Main sampling loop.
     t_next = t_steps[0]
-    x_next = latents.to(torch.float64) * (sigma(t_next) * s(t_next))
+    x_next = latents.to(torch.float32) * (sigma(t_next) * s(t_next))
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
         x_cur = x_next
 
@@ -159,7 +159,7 @@ def ablation_sampler(
 
         # Euler step.
         h = t_next - t_hat
-        denoised = net(x_hat / s(t_hat), sigma(t_hat), class_labels).to(torch.float64)
+        denoised = net(x_hat / s(t_hat), sigma(t_hat), class_labels).to(torch.float32)
         d_cur = (sigma_deriv(t_hat) / sigma(t_hat) + s_deriv(t_hat) / s(t_hat)) * x_hat - sigma_deriv(t_hat) * s(t_hat) / sigma(t_hat) * denoised
         x_prime = x_hat + alpha * h * d_cur
         t_prime = t_hat + alpha * h
@@ -169,7 +169,7 @@ def ablation_sampler(
             x_next = x_hat + h * d_cur
         else:
             assert solver == 'heun'
-            denoised = net(x_prime / s(t_prime), sigma(t_prime), class_labels).to(torch.float64)
+            denoised = net(x_prime / s(t_prime), sigma(t_prime), class_labels).to(torch.float32)
             d_prime = (sigma_deriv(t_prime) / sigma(t_prime) + s_deriv(t_prime) / s(t_prime)) * x_prime - sigma_deriv(t_prime) * s(t_prime) / sigma(t_prime) * denoised
             x_next = x_hat + h * ((1 - 1 / (2 * alpha)) * d_cur + 1 / (2 * alpha) * d_prime)
 
@@ -235,7 +235,7 @@ def parse_int_list(s):
 @click.option('--schedule',                help='Ablate noise schedule sigma(t)', metavar='vp|ve|linear',           type=click.Choice(['vp', 've', 'linear']))
 @click.option('--scaling',                 help='Ablate signal scaling s(t)', metavar='vp|none',                    type=click.Choice(['vp', 'none']))
 
-def main(network_pkl, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('cuda'), **sampler_kwargs):
+def main(network_pkl, outdir, subdirs, seeds, class_idx, max_batch_size, device=torch.device('mps'), **sampler_kwargs):
     """Generate random images using the techniques described in the paper
     "Elucidating the Design Space of Diffusion-Based Generative Models".
 
